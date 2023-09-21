@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "ppo-deep-reinforcement-learning"
+version = "0.1.0"
+description = ""
+authors = ["miguel-kjh <miguelangel.kjh@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+gym = "^0.26.2"
+wandb = "^0.15.10"
+torch = "^2.0.1"
+pyglet = "^2.0.9"
+stable-baselines3 = "^2.1.0"
+opencv-python = "^4.8.0.76"
+tensorboard = "^2.14.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
