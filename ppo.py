@@ -5,8 +5,14 @@ import numpy as np
 import random
 import torch
 
+import gym
+
 import time
 from torch.utils.tensorboard import SummaryWriter
+
+# delete warnings
+import warnings
+warnings.filterwarnings("ignore")
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -33,9 +39,20 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+def make_env(gym_id):
+    def thunk():
+        env = gym.make(gym_id)
+        env = gym.wrappers.RecordVideo(
+            env, 
+            f"videos", 
+            episode_trigger = lambda x: x % 100 == 0,
+        )
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        return env
+    return thunk
+
 def main():
     args = parse_args()
-    print(args)
     run_name = f"{args.gym_id}_{args.seed}_{int(time.time())}"
 
     if args.track:
@@ -56,9 +73,6 @@ def main():
         f"total_timesteps: {args.total_timesteps}, lr: {args.learning_rate}"
     )
 
-    for i in range(100):
-        writer.add_scalar("test_loss", i*2, global_step=i)
-
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -66,8 +80,15 @@ def main():
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
+    print(f"Device: {device}")
 
-    print(f"device: {device}")
+    envs = gym.vector.SyncVectorEnv([make_env(args.gym_id)])
+    observation = envs.reset()
+    for _ in range(200):
+        action = envs.action_space.sample()
+        observation, reward, done, truncated, info = envs.step(action)
+        if done or truncated:
+            print(f"reward: {info['final_info'][0]['episode']['r']}") 
     
 
 if __name__ == "__main__":
