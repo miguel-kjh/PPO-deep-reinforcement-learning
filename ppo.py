@@ -3,6 +3,7 @@ import os
 from distutils.util import strtobool
 import numpy as np
 import random
+
 import torch
 
 import gym
@@ -36,20 +37,25 @@ def parse_args():
         help="the wandb's project name")
     parser.add_argument("--wandb-entity", type=str, default=None,
         help="the entity (team) of wandb's project")
+    parser.add_argument("--capture-video", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
+        help="weather to capture videos of the agent performances (check out `videos` folder)")
+     # Algorithm specific arguments
+    parser.add_argument("--num-envs", type=int, default=4,
+        help="the number of parallel game environments")
     args = parser.parse_args()
     return args
 
-def make_env(gym_id):
+def make_env(gym_id, idx, capture_video, run_name):
     def thunk():
         env = gym.make(gym_id)
-        env = gym.wrappers.RecordVideo(
-            env, 
-            f"videos", 
-            episode_trigger = lambda x: x % 100 == 0,
-        )
         env = gym.wrappers.RecordEpisodeStatistics(env)
+        if capture_video:
+            if idx == 0:
+                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
         return env
+
     return thunk
+
 
 def main():
     args = parse_args()
@@ -82,13 +88,24 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
     print(f"Device: {device}")
 
-    envs = gym.vector.SyncVectorEnv([make_env(args.gym_id)])
+    """envs = gym.vector.SyncVectorEnv([make_env(args.gym_id)])
     observation = envs.reset()
     for _ in range(200):
         action = envs.action_space.sample()
         observation, reward, done, truncated, info = envs.step(action)
         if done or truncated:
-            print(f"reward: {info['final_info'][0]['episode']['r']}") 
+            print(f"reward: {info['final_info'][0]['episode']['r']}")"""
+    
+    # env setup
+    envs = gym.vector.SyncVectorEnv(
+        [
+            make_env(args.gym_id, i, args.capture_video, run_name)
+            for i in range(args.num_envs)
+        ]
+    )
+    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
+    print(f"Observation space: {envs.single_observation_space.shape}")
+    print(f"Action space: {envs.single_action_space.n}")
     
 
 if __name__ == "__main__":
