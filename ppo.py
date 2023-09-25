@@ -1,4 +1,5 @@
 import argparse
+import glob
 import os
 from distutils.util import strtobool
 import numpy as np
@@ -13,6 +14,7 @@ from torch.distributions.categorical import Categorical
 import gym
 
 import time
+import wandb
 from torch.utils.tensorboard import SummaryWriter
 
 # delete warnings
@@ -138,18 +140,17 @@ def main():
     run_name = f"{args.gym_id}_{args.seed}_{int(time.time())}"
 
     if args.track:
-        import wandb
         wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
-            name=run_name,
             sync_tensorboard=True,
             config=vars(args),
+            name=run_name,
             monitor_gym=True,
-            save_code=True
+            save_code=True,
         )
 
-    writer = SummaryWriter(f"runs/{args.exp_name}/{run_name}")
+    writer = SummaryWriter(f"runs")
     writer.add_text(
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
@@ -339,6 +340,8 @@ def main():
 
     # close environments to prevent memory leaks
     envs.close()
+    if args.track:
+        wandb.finish()
     writer.close()
 
 
