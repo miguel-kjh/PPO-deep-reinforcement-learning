@@ -38,6 +38,10 @@ def parse_args():
     parse.add_argument("--capture-video", type=lambda x: bool(strtobool(x)), default=False, help="whether to capture video")
     parse.add_argument("--n-envs", type=int, default=4, help="the number of parallel environments")
     parse.add_argument("--n-steps", type=int, default=128, help="the number of steps to run for each environment per update, aka the number of data to collect")
+    parse.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=True, help="whether to anneal the learning rate")
+    parse.add_argument("--gae", type=lambda x: bool(strtobool(x)), default=True, help="whether to use generalized advantage estimation")
+    parse.add_argument("--gamma", type=float, default=0.99, help="the discount factor gamma")
+    parse.add_argument("--gae-lambda", type=float, default=0.95, help="lambda for the GAE")
 
     return parse.parse_args()
 
@@ -65,6 +69,16 @@ class Agent(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(64, envs.single_action_space.n), std=0.01), # the std=0.01 make the the probability of each action is similar
         )
+        
+    def get_value(self, x):
+        return self.critc(x)
+    
+    def get_action_and_value(self, x, action=None):
+        logits = self.actor(x)
+        probs = Categorical(logits=logits)
+        if action is None:
+            action = probs.sample()
+        return action, probs.log_prob(action), probs.entropy(), self.get_value(x)
 
 if __name__ == "__main__":
     args = parse_args()
@@ -125,16 +139,56 @@ if __name__ == "__main__":
     )
     #only discrete action space is supported
     assert isinstance(envs.action_space, gym.spaces.Discrete) or isinstance(envs.action_space, gym.spaces.MultiDiscrete), "Only discrete action space is supported"
-    print("Observation space:", envs.single_observation_space.shape)
-    print("Action space:", envs.single_action_space.n)
     
     agent = Agent(envs).to(device)
-    print(agent)
     optimizer = torch.optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
     
+    #ALGO logic 
+    obs = torch.zeros((args.n_steps, args.n_envs) + envs.single_observation_space.shape).to(device)
+    actions = torch.zeros((args.n_steps, args.n_envs), dtype=torch.long).to(device)
+    log_probs = torch.zeros((args.n_steps, args.n_envs)).to(device)
+    rewards = torch.zeros((args.n_steps, args.n_envs)).to(device)
+    dones = torch.zeros((args.n_steps, args.n_envs)).to(device)
+    values = torch.zeros((args.n_steps, args.n_envs)).to(device)
+    
+    #start the game
+    global_step = 0
+    start_time = time.time()
+    next_obs = torch.Tensor(envs.reset()[0]).to(device)
+    next_done = torch.zeros(args.n_envs).to(device)
+    num_updates = args.total_timesteps // args.n_steps // args.n_envs
     
     
-    
+    for update in range(1, num_updates + 1):
+        if args.anneal_lr:
+            frac = 1.0 - (update - 1.0) / num_updates
+            lr_now = args.learning_rate * frac
+            optimizer.param_groups[0]["lr"] = lr_now
+            
+        for step in range(args.n_steps):
+            global_step += args.n_envs
+            obs[step] = next_obs
+            dones[step] = next_done
+            
+        with torch.no_grad():
+            action, log_prob, _, value = agent.get_action_and_value(next_obs)
+            values[step] = value.flatten()
+        actions[step] = action
+        log_probs[step] = log_prob
+        
+        next_obs, reward, next_done, _, infos = envs.step(action.cpu().numpy())
+        rewards[step] = torch.tensor(reward).to(device).view(-1)
+        next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
+        if infos:
+            for item in infos["final_info"]:
+                if item is not None and "episode" in item.keys():
+                    print(f"Episodic return: {item['episode']['r'][0]}, global_step: {global_step}")
+                    writer.add_scalar("charts/episode_return", item["episode"]["r"][0], global_step)
+                    writer.add_scalar("charts/episode_length", item["episode"]["l"][0], global_step)
+                    if args.track:
+                        wandb.log({"charts/episode_return": item["episode"]["r"][0], "charts/episode_length": item["episode"]["l"][0], "global_step": global_step})
+                    break
+        
     
     #observations = envs.reset()
 
