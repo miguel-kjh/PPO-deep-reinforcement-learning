@@ -1,7 +1,7 @@
 import argparse
 import os
 from distutils.util import strtobool
-import gym
+import gymnasium as gym
 from torch.utils.tensorboard import SummaryWriter
 import time
 from lightning import seed_everything
@@ -53,7 +53,7 @@ if __name__ == "__main__":
     device = "cuda" if args.cuda and torch.cuda.is_available() else "cpu"
 
     # vectorized environment
-    env = gym.make(args.gym_id)
+    env = gym.make(args.gym_id,  render_mode="rgb_array")
     env = gym.wrappers.RecordEpisodeStatistics(env)
     env = gym.wrappers.RecordVideo(env, "videos", episode_trigger=lambda x: x % 100 == 0)
     observation = env.reset()
@@ -62,6 +62,6 @@ if __name__ == "__main__":
         action = env.action_space.sample()
         observation, reward, done, _, info = env.step(action)
         if done:
-            print(f"Episodic return: {info['episode']['r']}")
+            print(f"Episodic return: {info['episode']['r'][0]}")
             observation = env.reset()
     env.close()
