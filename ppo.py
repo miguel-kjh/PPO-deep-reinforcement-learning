@@ -7,10 +7,14 @@ import time
 from lightning import seed_everything
 import torch
 
+#delete warnings
+import warnings
+warnings.filterwarnings("ignore")
+
 def parse_args():
     parse = argparse.ArgumentParser()
     # environment setting
-    parse.add_argument('--seed', type=int, default=1, help='random seed for reproducibility')
+    parse.add_argument('--seed', type=int, default=2024, help='random seed for reproducibility')
     parse.add_argument('--cuda', type=lambda x: bool(strtobool(x)), default=True, help='use cuda or not')
     parse.add_argument('--torch-deterministic', type=lambda x: bool(strtobool(x)), 
                        default=True, help='whether to set `torch.backends.cudnn.deterministic=True`')
@@ -53,9 +57,9 @@ if __name__ == "__main__":
     device = "cuda" if args.cuda and torch.cuda.is_available() else "cpu"
 
     # vectorized environment
-    env = gym.make(args.gym_id,  render_mode="rgb_array")
+    """env = gym.make(args.gym_id,  render_mode="rgb_array")
     env = gym.wrappers.RecordEpisodeStatistics(env)
-    env = gym.wrappers.RecordVideo(env, "videos", episode_trigger=lambda x: x % 100 == 0)
+    env = gym.wrappers.RecordVideo(env, "videos", episode_trigger=lambda x: x % 10 == 0)
     observation = env.reset()
     episodic_return = 0
     for _ in range(200):
@@ -64,4 +68,26 @@ if __name__ == "__main__":
         if done:
             print(f"Episodic return: {info['episode']['r'][0]}")
             observation = env.reset()
-    env.close()
+    env.close()"""
+    
+    def make_env(gym_id=args.gym_id):
+        def _thunk():
+            env = gym.make(gym_id, render_mode="rgb_array")
+            env = gym.wrappers.RecordEpisodeStatistics(env)
+            env = gym.wrappers.RecordVideo(env, "videos", episode_trigger=lambda x: x % 100 == 0)
+            return env
+        return _thunk
+    
+    envs = gym.vector.SyncVectorEnv([make_env()])
+    observations = envs.reset()
+
+    for _ in range(2000):
+        actions = envs.action_space.sample()
+        observations, rewards, terminations, truncations, infos = envs.step(actions)
+        #print(infos)
+        if infos:
+            for item in infos["final_info"]:
+                if "episode" in item.keys():
+                    print(f"Episodic return: {item['episode']['r'][0]}")
+
+    envs.close()
