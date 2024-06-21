@@ -82,7 +82,6 @@ class Agent(nn.Module):
 
 if __name__ == "__main__":
     args = parse_args()
-    print(args)
     run_name = f'{args.exp_name}_{args.gym_id}_{args.seed}_{int(time.time())}'
     root_dir = os.path.join("runs", run_name)
     if args.track:
@@ -188,6 +187,33 @@ if __name__ == "__main__":
                     if args.track:
                         wandb.log({"charts/episode_return": item["episode"]["r"][0], "charts/episode_length": item["episode"]["l"][0], "global_step": global_step})
                     break
+        
+        with torch.no_grad():
+            next_value = agent.get_value(next_obs).reshape(1, -1)
+            if args.gae:
+                advantages = torch.zeros_like(rewards).to(device)
+                lastgaelam = 0
+                for t in reversed(range(args.num_steps)):
+                    if t == args.num_steps - 1:
+                        nextnonterminal = 1.0 - next_done
+                        nextvalues = next_value
+                    else:
+                        nextnonterminal = 1.0 - dones[t + 1]
+                        nextvalues = values[t + 1]
+                    delta = rewards[t] + args.gamma * nextvalues * nextnonterminal - values[t]
+                    advantages[t] = lastgaelam = delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
+                returns = advantages + values
+            else:
+                returns = torch.zeros_like(rewards).to(device)
+                for t in reversed(range(args.num_steps)):
+                    if t == args.num_steps - 1:
+                        nextnonterminal = 1.0 - next_done
+                        next_return = next_value
+                    else:
+                        nextnonterminal = 1.0 - dones[t + 1]
+                        next_return = returns[t + 1]
+                    returns[t] = rewards[t] + args.gamma * nextnonterminal * next_return
+                advantages = returns - values
         
     
     #observations = envs.reset()
