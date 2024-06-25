@@ -319,16 +319,3 @@ if __name__ == "__main__":
     if args.track:
         wandb.finish()
     writer.close()
-    
-    #observations = envs.reset()
-
-"""    for _ in range(2000):
-        actions = envs.action_space.sample()
-        observations, rewards, terminations, truncations, infos = envs.step(actions)
-        #print(infos)
-        if infos:
-            for item in infos["final_info"]:
-                if "episode" in item.keys():
-                    print(f"Episodic return: {item['episode']['r'][0]}")
-
-    envs.close()"""
